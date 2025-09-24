@@ -1,14 +1,7 @@
 import CryptoJS from 'crypto-js';
 
 export function sanitizeFilename(filename: string): string {
-  // Hrvatski znakovi u ASCII
-  const charMap: { [key: string]: string } = {
-    'č': 'c', 'ć': 'c', 'đ': 'd', 'š': 's', 'ž': 'z',
-    'Č': 'C', 'Ć': 'C', 'Đ': 'D', 'Š': 'S', 'Ž': 'Z'
-  };
-
   return filename
-    .replace(/[čćđšžČĆĐŠŽ]/g, (char) => charMap[char] || char)
     .replace(/[\\/:*?"<>|]/g, '') // Ukloni zabranjene znakove
     .replace(/[\x00-\x1f\x80-\x9f]/g, '') // Ukloni kontrolne znakove
     .replace(/\s+/g, ' ') // Višestruki razmaci u jedan
@@ -17,7 +10,7 @@ export function sanitizeFilename(filename: string): string {
 
 export function generateFilename(rb: number, nazivArtikla: string, extension: string, index?: number): string {
   const baseName = sanitizeFilename(`${rb}. ${nazivArtikla}`);
-  const suffix = index && index > 0 ? ` (${index + 1})` : '';
+  const suffix = (index !== undefined && index > 0) ? ` (${index + 1})` : '';
   return `${baseName}${suffix}.${extension}`;
 }
 

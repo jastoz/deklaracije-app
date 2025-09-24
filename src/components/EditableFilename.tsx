@@ -19,7 +19,8 @@ export function EditableFilename({ rb, imageId, filename, isEditing }: EditableF
   useEffect(() => {
     if (isEditing && inputRef.current) {
       inputRef.current.focus();
-      inputRef.current.select();
+      // Postavi kursor na početak umjesto označavanja cijelog teksta
+      inputRef.current.setSelectionRange(0, 0);
     }
   }, [isEditing]);
 
@@ -30,7 +31,18 @@ export function EditableFilename({ rb, imageId, filename, isEditing }: EditableF
   const handleSave = () => {
     const trimmedValue = editValue.trim();
     if (trimmedValue && trimmedValue !== filename) {
-      updateImageFilename(rb, imageId, trimmedValue);
+      // Provjeri ima li redni broj na početku
+      const rbPrefix = `${rb}. `;
+      let finalValue = trimmedValue;
+
+      // Ako ne počinje s rednim brojem, dodaj ga
+      if (!trimmedValue.startsWith(rbPrefix)) {
+        // Ukloni postojeći redni broj ako postoji
+        const withoutRb = trimmedValue.replace(/^\d+\.\s*/, '');
+        finalValue = rbPrefix + withoutRb;
+      }
+
+      updateImageFilename(rb, imageId, finalValue);
     }
     toggleImageEdit(rb, imageId);
   };
@@ -50,44 +62,44 @@ export function EditableFilename({ rb, imageId, filename, isEditing }: EditableF
 
   if (isEditing) {
     return (
-      <div className="flex items-center gap-2 w-full">
+      <div className="flex items-center gap-1 w-full">
         <input
           ref={inputRef}
           type="text"
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="flex-1 px-2 py-1 text-sm border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 px-1 py-0.5 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-black"
         />
         <button
           onClick={handleSave}
-          className="p-1 text-green-600 hover:text-green-700 transition-colors"
+          className="p-0.5 text-green-600 hover:text-green-700 transition-colors"
           title="Spremi"
         >
-          <Check className="w-4 h-4" />
+          <Check className="w-3 h-3" />
         </button>
         <button
           onClick={handleCancel}
-          className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+          className="p-0.5 text-gray-400 hover:text-gray-600 transition-colors"
           title="Odustani"
         >
-          <X className="w-4 h-4" />
+          <X className="w-3 h-3" />
         </button>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-2 w-full group">
-      <span className="flex-1 text-sm font-medium text-gray-900 truncate">
+    <div className="flex items-center gap-1 w-full group">
+      <span className="flex-1 text-xs font-medium text-black truncate cursor-pointer" onClick={() => toggleImageEdit(rb, imageId)}>
         {filename}
       </span>
       <button
         onClick={() => toggleImageEdit(rb, imageId)}
-        className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-500 transition-all"
+        className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-400 hover:text-blue-500 transition-all"
         title="Uredi naziv"
       >
-        <Edit3 className="w-4 h-4" />
+        <Edit3 className="w-3 h-3" />
       </button>
     </div>
   );

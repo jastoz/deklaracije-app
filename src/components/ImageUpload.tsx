@@ -26,8 +26,15 @@ export function ImageUpload({ rb, nazivArtikla, images }: ImageUploadProps) {
 
       try {
         const extension = getFileExtension(file.name);
-        const existingCount = images.length;
-        const finalFilename = generateFilename(rb, nazivArtikla, extension, existingCount);
+        let finalFilename: string;
+
+        // Ako ima već slika ili će ih biti više, dodaj redni broj
+        if (images.length > 0) {
+          finalFilename = generateFilename(rb, nazivArtikla, extension, images.length);
+        } else {
+          // Prva slika - bez sufiksa
+          finalFilename = generateFilename(rb, nazivArtikla, extension);
+        }
 
         let thumbnail: string | undefined;
         try {
@@ -100,33 +107,18 @@ export function ImageUpload({ rb, nazivArtikla, images }: ImageUploadProps) {
       {/* Uploaded Images */}
       {images.length > 0 && (
         <div className="space-y-2">
-          <p className="text-sm font-medium text-gray-700">
+          <p className="text-xs font-medium text-gray-600">
             Dodane slike ({images.length})
           </p>
           <div className="grid grid-cols-1 gap-2">
             {images.map((image) => (
               <div
                 key={image.id}
-                className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg"
+                className="flex items-center gap-2 p-1 bg-gray-50 rounded text-xs"
               >
-                {/* Thumbnail */}
-                <div className="flex-shrink-0 w-12 h-12 bg-gray-200 rounded overflow-hidden">
-                  {image.thumbnail ? (
-                    <img
-                      src={image.thumbnail}
-                      alt="thumbnail"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <ImageIcon className="w-6 h-6 text-gray-400" />
-                    </div>
-                  )}
-                </div>
-
                 {/* File Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
+                  <p className="text-xs font-medium text-gray-900 truncate">
                     {image.finalFilename}
                   </p>
                   <p className="text-xs text-gray-500 truncate">
@@ -137,10 +129,10 @@ export function ImageUpload({ rb, nazivArtikla, images }: ImageUploadProps) {
                 {/* Remove Button */}
                 <button
                   onClick={() => handleRemoveImage(image.id)}
-                  className="flex-shrink-0 p-1 text-gray-400 hover:text-red-500 transition-colors"
+                  className="flex-shrink-0 p-1 text-red-400 hover:text-red-600 transition-colors"
                   title="Ukloni sliku"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3 h-3" />
                 </button>
               </div>
             ))}

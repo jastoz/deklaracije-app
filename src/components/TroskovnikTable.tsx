@@ -1,12 +1,52 @@
 'use client';
 
-import { AlertCircle, CheckCircle } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragOverEvent,
+  rectIntersection,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { GripVertical } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
-import { ImageUpload } from './ImageUpload';
-import { EditableFilename } from './EditableFilename';
+import { DraggableRow } from './DraggableRow';
 
 export function TroskovnikTable() {
-  const { troskovnikItems, updateItem } = useAppStore();
+  const { troskovnikItems, reorderItems } = useAppStore();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+
+    console.log('Drag end:', { activeId: active.id, overId: over?.id });
+
+    if (over && active.id !== over.id) {
+      const activeIndex = parseInt(active.id.toString(), 10);
+      const overIndex = parseInt(over.id.toString(), 10);
+
+      console.log('Reordering:', { activeIndex, overIndex });
+
+      if (!isNaN(activeIndex) && !isNaN(overIndex) && activeIndex !== overIndex) {
+        reorderItems(activeIndex, overIndex);
+      }
+    }
+  }
 
   if (troskovnikItems.length === 0) {
     return null;
@@ -17,108 +57,33 @@ export function TroskovnikTable() {
       <h2 className="text-xl font-semibold text-gray-900">
         Troškovnik ({troskovnikItems.length} stavki)
       </h2>
+      <p className="text-sm text-gray-600 flex items-center gap-2">
+        💡 Povuci za <span className="inline-flex items-center mx-1"><GripVertical className="w-3 h-3" /></span> da promijeniš redoslijed stavki
+      </p>
 
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="border-b-2 border-gray-200">
-              <th className="text-left py-3 px-4 font-semibold text-gray-900 w-16">
-                Rb.
-              </th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-900 min-w-[200px]">
-                Naziv artikla
-              </th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-900 w-32">
-                Brand
-              </th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-900 min-w-[300px]">
-                Fotografije
-              </th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-900 w-20">
-                Status
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {troskovnikItems.map((item) => (
-              <tr key={item.rb} className="border-b border-gray-100">
-                <td className="py-4 px-4 text-center font-medium text-gray-900">
-                  {item.rb}
-                </td>
-                <td className="py-4 px-4">
-                  <p className="font-medium text-gray-900">{item.nazivArtikla}</p>
-                </td>
-                <td className="py-4 px-4">
-                  <input
-                    type="text"
-                    value={item.brand}
-                    onChange={(e) => updateItem(item.rb, { brand: e.target.value })}
-                    placeholder="Unesi brand"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
-                  />
-                </td>
-                <td className="py-4 px-4">
-                  <div className="space-y-3">
-                    <ImageUpload
-                      rb={item.rb}
-                      nazivArtikla={item.nazivArtikla}
-                      images={item.images}
-                    />
+        {/* Header */}
+        <div className="grid grid-cols-12 gap-4 py-3 px-4 border-b-2 border-gray-200 bg-gray-50 font-semibold text-gray-900 text-sm">
+          <div className="col-span-1">Rb.</div>
+          <div className="col-span-3">Naziv artikla</div>
+          <div className="col-span-2">Brand</div>
+          <div className="col-span-5">Fotografije</div>
+          <div className="col-span-1 text-center">Status</div>
+        </div>
 
-                    {/* Lista slika s editabilnim nazivima */}
-                    {item.images.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium text-gray-700">
-                          Nazivi datoteka:
-                        </p>
-                        <div className="space-y-1">
-                          {item.images.map((image) => (
-                            <div
-                              key={image.id}
-                              className="flex items-center gap-3 p-2 bg-white border border-gray-200 rounded"
-                            >
-                              <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded overflow-hidden">
-                                {image.thumbnail ? (
-                                  <img
-                                    src={image.thumbnail}
-                                    alt="thumbnail"
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-full h-full bg-gray-200" />
-                                )}
-                              </div>
-                              <div className="flex-1">
-                                <EditableFilename
-                                  rb={item.rb}
-                                  imageId={image.id}
-                                  filename={image.finalFilename}
-                                  isEditing={image.isEditing}
-                                />
-                                <p className="text-xs text-gray-500 truncate">
-                                  {image.originalFilename}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </td>
-                <td className="py-4 px-4 text-center">
-                  <div title={item.status === 'complete' ? 'Kompletno' : 'Nedostaju fotografije'}>
-                    {item.status === 'complete' ? (
-                      <CheckCircle className="w-6 h-6 text-green-500 mx-auto" />
-                    ) : (
-                      <AlertCircle className="w-6 h-6 text-yellow-500 mx-auto" />
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={rectIntersection}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={troskovnikItems.map((item, index) => index.toString())} strategy={verticalListSortingStrategy}>
+            <div className="space-y-1">
+              {troskovnikItems.map((item, index) => (
+                <DraggableRow key={`item-${index}`} item={item} index={index} />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@
 import { useAppStore } from '@/lib/store';
 import { FileUpload } from '@/components/FileUpload';
 import { TroskovnikTable } from '@/components/TroskovnikTable';
+import { ImportSection } from '@/components/ImportSection';
 import { ExportSection } from '@/components/ExportSection';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
 
@@ -60,6 +61,9 @@ export default function Home() {
               <TroskovnikTable />
             </div>
           )}
+
+          {/* Import Section */}
+          {troskovnikItems.length > 0 && <ImportSection />}
 
           {/* Export Section */}
           {troskovnikItems.length > 0 && <ExportSection />}
