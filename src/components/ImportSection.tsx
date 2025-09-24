@@ -95,7 +95,7 @@ export function ImportSection() {
                 </p>
                 <p className="text-xs text-gray-500">
                   Podržani formati: ZIP, JPG, PNG, PDF<br />
-                  Nazivi datoteka trebaju počinjati s rednim brojem (npr. "1. Naziv.jpg")
+                  Nazivi datoteka trebaju počinjati s rednim brojem (npr. &quot;1. Naziv.jpg&quot;)
                 </p>
               </>
             )}

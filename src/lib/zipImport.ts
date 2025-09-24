@@ -68,7 +68,7 @@ export async function parseZipFile(file: File): Promise<{ files: File[], errors:
   return { files, errors };
 }
 
-export async function createUploadedImageFromFile(file: File, rb: number): Promise<UploadedImage> {
+export async function createUploadedImageFromFile(file: File): Promise<UploadedImage> {
   let thumbnail: string | undefined;
 
   try {
@@ -120,7 +120,7 @@ export async function importImagesToItems(
     }
 
     try {
-      const uploadedImage = await createUploadedImageFromFile(file, rb);
+      const uploadedImage = await createUploadedImageFromFile(file);
       importedImages.push({ rb, image: uploadedImage });
       result.imported++;
     } catch (error) {

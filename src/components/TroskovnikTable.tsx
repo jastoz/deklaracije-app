@@ -2,17 +2,14 @@
 
 import {
   DndContext,
-  closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   DragEndEvent,
-  DragOverEvent,
   rectIntersection,
 } from '@dnd-kit/core';
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -34,13 +31,9 @@ export function TroskovnikTable() {
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
 
-    console.log('Drag end:', { activeId: active.id, overId: over?.id });
-
     if (over && active.id !== over.id) {
       const activeIndex = parseInt(active.id.toString(), 10);
       const overIndex = parseInt(over.id.toString(), 10);
-
-      console.log('Reordering:', { activeIndex, overIndex });
 
       if (!isNaN(activeIndex) && !isNaN(overIndex) && activeIndex !== overIndex) {
         reorderItems(activeIndex, overIndex);

@@ -116,9 +116,13 @@ export function DraggableRow({ item, index }: DraggableRowProps) {
       {/* Status */}
       <div className="col-span-1 flex items-center justify-center">
         {item.images.length > 0 ? (
-          <CheckCircle className="w-5 h-5 text-green-500" title="Kompletno" />
+          <div title="Kompletno">
+            <CheckCircle className="w-5 h-5 text-green-500" />
+          </div>
         ) : (
-          <AlertCircle className="w-5 h-5 text-amber-500" title="Nedostaju slike" />
+          <div title="Nedostaju slike">
+            <AlertCircle className="w-5 h-5 text-amber-500" />
+          </div>
         )}
       </div>
     </div>

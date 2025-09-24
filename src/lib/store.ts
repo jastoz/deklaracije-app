@@ -38,6 +38,7 @@ export const useAppStore = create<AppStore>((set) => ({
   })),
 
   addImageToItem: (rb, image) => set((state) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { generateFilename } = require('./fileUtils');
 
     return {
@@ -75,6 +76,7 @@ export const useAppStore = create<AppStore>((set) => ({
   }),
 
   removeImageFromItem: (rb, imageId) => set((state) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { generateFilename } = require('./fileUtils');
 
     return {
@@ -135,6 +137,7 @@ export const useAppStore = create<AppStore>((set) => ({
   reorderItems: (activeIndex, overIndex) => set((state) => {
     if (activeIndex === overIndex) return state;
 
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { generateFilename } = require('./fileUtils');
     const items = [...state.troskovnikItems];
 
