@@ -8,8 +8,8 @@ export function sanitizeFilename(filename: string): string {
     .trim();
 }
 
-export function generateFilename(rb: number, nazivArtikla: string, extension: string, index?: number): string {
-  const baseName = sanitizeFilename(`${rb}. ${nazivArtikla}`);
+export function generateFilename(rb: number, brand: string, nazivArtikla: string, extension: string, index?: number): string {
+  const baseName = sanitizeFilename(`${rb}. ${brand} ${nazivArtikla}`);
   const suffix = (index !== undefined && index > 0) ? ` (${index + 1})` : '';
   return `${baseName}${suffix}.${extension}`;
 }
@@ -87,6 +87,167 @@ export function createThumbnail(file: File): Promise<string> {
     };
 
     reader.onerror = () => reject(new Error('Greška pri čitanju slike'));
+    reader.readAsDataURL(file);
+  });
+}
+
+export type CompressionLevel = 'original' | 'optimized' | 'maximum';
+
+interface CompressionSettings {
+  quality: number;
+  maxDimension: number;
+  convertPngToJpg: boolean;
+}
+
+const COMPRESSION_PRESETS: Record<CompressionLevel, CompressionSettings> = {
+  original: {
+    quality: 1.0,
+    maxDimension: Infinity,
+    convertPngToJpg: false,
+  },
+  optimized: {
+    quality: 0.87,
+    maxDimension: 2048,
+    convertPngToJpg: true,
+  },
+  maximum: {
+    quality: 0.75,
+    maxDimension: 1600,
+    convertPngToJpg: true,
+  },
+};
+
+async function isPngTransparent(file: File): Promise<boolean> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(false);
+          return;
+        }
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        // Provjeri nekoliko piksela za transparenciju
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        for (let i = 3; i < data.length; i += 4) {
+          if (data[i] < 255) {
+            resolve(true); // Pronađena transparencija
+            return;
+          }
+        }
+        resolve(false); // Nema transparencije
+      };
+      img.onerror = () => resolve(false);
+      img.src = reader.result as string;
+    };
+    reader.onerror = () => resolve(false);
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function compressImageForExport(
+  file: File,
+  originalFilename: string,
+  compressionLevel: CompressionLevel = 'optimized'
+): Promise<{ file: File; filename: string }> {
+  // Ako je PDF ili dokument, vrati original
+  if (!file.type.startsWith('image/')) {
+    return { file, filename: originalFilename };
+  }
+
+  const settings = COMPRESSION_PRESETS[compressionLevel];
+
+  // Ako je originalna kvaliteta, vrati original
+  if (compressionLevel === 'original') {
+    return { file, filename: originalFilename };
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = async () => {
+      const img = new Image();
+
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          reject(new Error('Ne mogu kreirati canvas kontekst'));
+          return;
+        }
+
+        let { width, height } = img;
+
+        // Resize ako je veće od maxDimension
+        if (width > settings.maxDimension || height > settings.maxDimension) {
+          if (width > height) {
+            if (width > settings.maxDimension) {
+              height = (height * settings.maxDimension) / width;
+              width = settings.maxDimension;
+            }
+          } else {
+            if (height > settings.maxDimension) {
+              width = (width * settings.maxDimension) / height;
+              height = settings.maxDimension;
+            }
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        // Koristi visokokvalitetni rendering
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Odluči o output formatu
+        let outputMimeType = file.type;
+        let outputExtension = getFileExtension(originalFilename);
+
+        // Konvertiraj PNG u JPG ako nema transparenciju
+        if (file.type === 'image/png' && settings.convertPngToJpg) {
+          const hasTransparency = await isPngTransparent(file);
+          if (!hasTransparency) {
+            outputMimeType = 'image/jpeg';
+            outputExtension = 'jpg';
+          }
+        }
+
+        // Generiraj blob s kompresijom
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Greška pri kompresiji slike'));
+              return;
+            }
+
+            // Ažuriraj naziv datoteke s novim extension-om
+            const newFilename = originalFilename.replace(/\.[^.]+$/, `.${outputExtension}`);
+            const compressedFile = new File([blob], newFilename, { type: outputMimeType });
+
+            resolve({ file: compressedFile, filename: newFilename });
+          },
+          outputMimeType,
+          settings.quality
+        );
+      };
+
+      img.onerror = () => reject(new Error('Greška pri učitavanju slike'));
+      img.src = reader.result as string;
+    };
+
+    reader.onerror = () => reject(new Error('Greška pri čitanju datoteke'));
     reader.readAsDataURL(file);
   });
 }

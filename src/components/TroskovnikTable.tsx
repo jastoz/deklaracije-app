@@ -14,12 +14,12 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Trash2 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { DraggableRow } from './DraggableRow';
 
 export function TroskovnikTable() {
-  const { troskovnikItems, reorderItems } = useAppStore();
+  const { troskovnikItems, reorderItems, reset } = useAppStore();
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -41,15 +41,30 @@ export function TroskovnikTable() {
     }
   }
 
+  const handleRemoveTroskovnik = () => {
+    if (confirm('Jeste li sigurni da želite ukloniti troškovnik? Sve slike i podaci će biti obrisani.')) {
+      reset();
+    }
+  };
+
   if (troskovnikItems.length === 0) {
     return null;
   }
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-gray-900">
-        Troškovnik ({troskovnikItems.length} stavki)
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-gray-900">
+          Troškovnik ({troskovnikItems.length} stavki)
+        </h2>
+        <button
+          onClick={handleRemoveTroskovnik}
+          className="inline-flex items-center gap-2 px-3 py-2 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors"
+        >
+          <Trash2 className="w-4 h-4" />
+          Ukloni troškovnik
+        </button>
+      </div>
       <p className="text-sm text-gray-600 flex items-center gap-2">
         💡 Povuci za <span className="inline-flex items-center mx-1"><GripVertical className="w-3 h-3" /></span> da promijeniš redoslijed stavki
       </p>

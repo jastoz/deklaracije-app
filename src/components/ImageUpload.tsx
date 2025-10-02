@@ -9,11 +9,12 @@ import { generateFilename, getFileExtension, isAllowedFileType, createThumbnail 
 
 interface ImageUploadProps {
   rb: number;
+  brand: string;
   nazivArtikla: string;
   images: UploadedImage[];
 }
 
-export function ImageUpload({ rb, nazivArtikla, images }: ImageUploadProps) {
+export function ImageUpload({ rb, brand, nazivArtikla, images }: ImageUploadProps) {
   const { addImageToItem, removeImageFromItem, addError } = useAppStore();
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -30,10 +31,10 @@ export function ImageUpload({ rb, nazivArtikla, images }: ImageUploadProps) {
 
         // Ako ima već slika ili će ih biti više, dodaj redni broj
         if (images.length > 0) {
-          finalFilename = generateFilename(rb, nazivArtikla, extension, images.length);
+          finalFilename = generateFilename(rb, brand, nazivArtikla, extension, images.length);
         } else {
           // Prva slika - bez sufiksa
-          finalFilename = generateFilename(rb, nazivArtikla, extension);
+          finalFilename = generateFilename(rb, brand, nazivArtikla, extension);
         }
 
         let thumbnail: string | undefined;
@@ -57,7 +58,7 @@ export function ImageUpload({ rb, nazivArtikla, images }: ImageUploadProps) {
         addError(`Greška pri obradi datoteke ${file.name}: ${error}`);
       }
     }
-  }, [rb, nazivArtikla, images, addImageToItem, addError]);
+  }, [rb, brand, nazivArtikla, images, addImageToItem, addError]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,

@@ -4,10 +4,13 @@ import { useState } from 'react';
 import { Download, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { generateZIP, downloadZIP } from '@/lib/zipExport';
+import { CompressionLevel } from '@/lib/fileUtils';
 
 export function ExportSection() {
   const { nazivUstanove, troskovnikItems, addError } = useAppStore();
   const [isExporting, setIsExporting] = useState(false);
+  const [compressionLevel, setCompressionLevel] = useState<CompressionLevel>('optimized');
+  const [compressionProgress, setCompressionProgress] = useState(0);
 
   // Statistike
   const totalItems = troskovnikItems.length;
@@ -33,14 +36,21 @@ export function ExportSection() {
     if (!canExport) return;
 
     setIsExporting(true);
+    setCompressionProgress(0);
 
     try {
-      const zipBlob = await generateZIP(nazivUstanove, troskovnikItems);
+      const zipBlob = await generateZIP(
+        nazivUstanove,
+        troskovnikItems,
+        compressionLevel,
+        (progress) => setCompressionProgress(progress)
+      );
       downloadZIP(zipBlob, nazivUstanove);
     } catch (error) {
       addError(`Greška pri generiranju ZIP datoteke: ${error}`);
     } finally {
       setIsExporting(false);
+      setCompressionProgress(0);
     }
   };
 
@@ -121,6 +131,67 @@ export function ExportSection() {
         </div>
       )}
 
+      {/* Compression Level Selection */}
+      {canExport && (
+        <div className="bg-white border rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Razina kompresije</h3>
+          <div className="space-y-3">
+            <label className="flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+              <input
+                type="radio"
+                name="compression"
+                value="original"
+                checked={compressionLevel === 'original'}
+                onChange={(e) => setCompressionLevel(e.target.value as CompressionLevel)}
+                className="mt-1 w-4 h-4 text-blue-600"
+              />
+              <div className="flex-1">
+                <div className="font-medium text-gray-900">Originalna kvaliteta</div>
+                <div className="text-sm text-gray-600 mt-1">
+                  Bez kompresije - originalne slike i dimenzije (najveća veličina ZIP-a)
+                </div>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 p-4 border-2 border-blue-500 rounded-lg cursor-pointer bg-blue-50 hover:bg-blue-100 transition-colors">
+              <input
+                type="radio"
+                name="compression"
+                value="optimized"
+                checked={compressionLevel === 'optimized'}
+                onChange={(e) => setCompressionLevel(e.target.value as CompressionLevel)}
+                className="mt-1 w-4 h-4 text-blue-600"
+              />
+              <div className="flex-1">
+                <div className="font-medium text-gray-900 flex items-center gap-2">
+                  Optimizirana <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">Preporučeno</span>
+                </div>
+                <div className="text-sm text-gray-600 mt-1">
+                  Quality 87%, max 2048px - ušteda 40-60% bez vidljivog gubitka kvalitete
+                </div>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+              <input
+                type="radio"
+                name="compression"
+                value="maximum"
+                checked={compressionLevel === 'maximum'}
+                onChange={(e) => setCompressionLevel(e.target.value as CompressionLevel)}
+                className="mt-1 w-4 h-4 text-blue-600"
+              />
+              <div className="flex-1">
+                <div className="font-medium text-gray-900">Maksimalna kompresija</div>
+                <div className="text-sm text-gray-600 mt-1">
+                  Quality 75%, max 1600px - ušteda 60-75%, lagano smanjena kvaliteta
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+      )}
+
       {/* Export informacije */}
       {canExport && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
@@ -135,6 +206,22 @@ export function ExportSection() {
                 manifest.csv s metapodacima i summary.txt s pregledom.
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Progress bar */}
+      {isExporting && compressionProgress > 0 && (
+        <div className="bg-white border rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">Komprimiram slike...</span>
+            <span className="text-sm text-gray-600">{compressionProgress}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${compressionProgress}%` }}
+            />
           </div>
         </div>
       )}

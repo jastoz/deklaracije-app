@@ -1,22 +1,35 @@
 import JSZip from 'jszip';
 import { TroskovnikItem, ManifestEntry } from './types';
-import { calculateSHA256 } from './fileUtils';
+import { calculateSHA256, compressImageForExport, CompressionLevel } from './fileUtils';
 
 export async function generateZIP(
   nazivUstanove: string,
-  items: TroskovnikItem[]
+  items: TroskovnikItem[],
+  compressionLevel: CompressionLevel = 'optimized',
+  onProgress?: (progress: number) => void
 ): Promise<Blob> {
   const zip = new JSZip();
   const manifestEntries: ManifestEntry[] = [];
 
+  // Izračunaj ukupan broj slika za progress tracking
+  const totalImages = items.reduce((sum, item) => sum + item.images.length, 0);
+  let processedImages = 0;
+
   for (const item of items) {
     for (const image of item.images) {
       try {
-        // Izračunaj SHA256
-        const sha256 = await calculateSHA256(image.file);
+        // Komprimiraj sliku ako nije originalna kvaliteta
+        const { file: processedFile, filename: processedFilename } = await compressImageForExport(
+          image.file,
+          image.finalFilename,
+          compressionLevel
+        );
+
+        // Izračunaj SHA256 komprimitane slike
+        const sha256 = await calculateSHA256(processedFile);
 
         // Dodaj sliku u ZIP
-        zip.file(image.finalFilename, image.file);
+        zip.file(processedFilename, processedFile);
 
         // Dodaj u manifest
         manifestEntries.push({
@@ -24,11 +37,18 @@ export async function generateZIP(
           naziv_artikla: item.nazivArtikla,
           brand: item.brand || '',
           original_filename: image.originalFilename,
-          final_filename: image.finalFilename,
+          final_filename: processedFilename,
           sha256,
           uploaded_at: new Date().toISOString(),
           note: ''
         });
+
+        // Ažuriraj progress
+        processedImages++;
+        if (onProgress) {
+          const progress = Math.round((processedImages / totalImages) * 100);
+          onProgress(progress);
+        }
       } catch (error) {
         console.error(`Greška pri obradi slike ${image.originalFilename}:`, error);
         throw new Error(`Greška pri obradi slike ${image.originalFilename}`);

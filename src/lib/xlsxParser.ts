@@ -23,6 +23,10 @@ export function parseXLSX(file: File): Promise<ParsedXLSXData> {
           range: 2 // Preskače prva 2 retka
         });
 
+        // Debug logging - prikaži prvih 5 redaka
+        console.log('XLSX Debug - Prvi sheet:', firstSheetName);
+        console.log('XLSX Debug - Prvih 5 redaka:', jsonData.slice(0, 5));
+
         const items: TroskovnikItem[] = [];
         const errors: string[] = [];
         const usedRb = new Set<number>();
@@ -31,7 +35,13 @@ export function parseXLSX(file: File): Promise<ParsedXLSXData> {
           if (!Array.isArray(row) || row.length < 2) return; // Prazan red
 
           const rb = row[0]; // Kolona A
-          const nazivArtikla = row[1]; // Kolona B
+          // Pokušaj pronaći naziv u koloni B ili C (neki troškovnici imaju praznu kolonu B)
+          const nazivArtikla = row[1] || row[2]; // Kolona B ili C
+
+          // Debug logging za problematične retke
+          if (!rb || typeof rb !== 'number') {
+            console.log(`Red ${index + 3} problem - rb:`, rb, 'tip:', typeof rb, 'cijeli red:', row);
+          }
 
           // Validacija rb
           if (!rb || typeof rb !== 'number' || !Number.isInteger(rb)) {

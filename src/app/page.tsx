@@ -6,12 +6,16 @@ import { TroskovnikTable } from '@/components/TroskovnikTable';
 import { ImportSection } from '@/components/ImportSection';
 import { ExportSection } from '@/components/ExportSection';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { StorageInfo } from '@/components/StorageInfo';
+import { RestoreDialog } from '@/components/RestoreDialog';
 
 export default function Home() {
   const { nazivUstanove, setNazivUstanove, troskovnikItems, isProcessing } = useAppStore();
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 overflow-y-auto">
+      <RestoreDialog />
+
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         {/* Header */}
         <div className="mb-8">
@@ -25,6 +29,9 @@ export default function Home() {
 
         {/* Main Content */}
         <div className="space-y-8">
+          {/* Storage Info Widget */}
+          {troskovnikItems.length > 0 && <StorageInfo />}
+
           {/* Institution Name */}
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <label htmlFor="institution-name" className="block text-sm font-medium text-black mb-2">

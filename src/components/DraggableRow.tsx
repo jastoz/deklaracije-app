@@ -74,6 +74,7 @@ export function DraggableRow({ item, index }: DraggableRowProps) {
         <div className="space-y-3">
           <ImageUpload
             rb={item.rb}
+            brand={item.brand}
             nazivArtikla={item.nazivArtikla}
             images={item.images}
           />

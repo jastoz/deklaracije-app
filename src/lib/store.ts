@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import { AppState, TroskovnikItem, UploadedImage } from './types';
+import { generateFilename } from './fileUtils';
+import { saveStateToStorage, loadStateFromStorage, clearAllStorage, debounce } from './persistence';
+import { deleteImageFromIndexedDB } from './storage';
 
 interface AppStore extends AppState {
   setNazivUstanove: (naziv: string) => void;
@@ -15,6 +18,8 @@ interface AppStore extends AppState {
   addError: (error: string) => void;
   clearErrors: () => void;
   reset: () => void;
+  loadFromStorage: () => Promise<boolean>;
+  clearStorage: () => Promise<void>;
 }
 
 const initialState: AppState = {
@@ -24,24 +29,60 @@ const initialState: AppState = {
   errors: []
 };
 
-export const useAppStore = create<AppStore>((set) => ({
+// Debounced auto-save function
+const debouncedAutoSave = debounce(async (nazivUstanove: string, troskovnikItems: TroskovnikItem[]) => {
+  try {
+    await saveStateToStorage(nazivUstanove, troskovnikItems);
+  } catch (error) {
+    console.error('Auto-save failed:', error);
+  }
+}, 1000); // Save 1 second after last change
+
+export const useAppStore = create<AppStore>((set, get) => ({
   ...initialState,
 
-  setNazivUstanove: (naziv) => set({ nazivUstanove: naziv }),
+  setNazivUstanove: (naziv) => {
+    set({ nazivUstanove: naziv });
+    const state = get();
+    debouncedAutoSave(state.nazivUstanove, state.troskovnikItems);
+  },
 
-  setTroskovnikItems: (items) => set({ troskovnikItems: items }),
+  setTroskovnikItems: (items) => {
+    set({ troskovnikItems: items });
+    const state = get();
+    debouncedAutoSave(state.nazivUstanove, state.troskovnikItems);
+  },
 
-  updateItem: (rb, updates) => set((state) => ({
-    troskovnikItems: state.troskovnikItems.map(item =>
-      item.rb === rb ? { ...item, ...updates } : item
-    )
-  })),
+  updateItem: (rb, updates) => {
+    set((state) => ({
+      troskovnikItems: state.troskovnikItems.map(item => {
+        if (item.rb !== rb) return item;
 
-  addImageToItem: (rb, image) => set((state) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { generateFilename } = require('./fileUtils');
+        const updatedItem = { ...item, ...updates };
 
-    return {
+        // Ako se brand promijenio i postoje slike, regeneriraj nazive slika
+        if ('brand' in updates && updatedItem.images.length > 0) {
+          const updatedImages = updatedItem.images.map((img, index) => {
+            const extension = img.finalFilename.split('.').pop() || '';
+            return {
+              ...img,
+              finalFilename: updatedItem.images.length > 1
+                ? generateFilename(rb, updatedItem.brand, updatedItem.nazivArtikla, extension, index)
+                : generateFilename(rb, updatedItem.brand, updatedItem.nazivArtikla, extension)
+            };
+          });
+          return { ...updatedItem, images: updatedImages };
+        }
+
+        return updatedItem;
+      })
+    }));
+    const state = get();
+    debouncedAutoSave(state.nazivUstanove, state.troskovnikItems);
+  },
+
+  addImageToItem: (rb, image) => {
+    set((state) => ({
       troskovnikItems: state.troskovnikItems.map(item =>
         item.rb === rb
           ? (() => {
@@ -51,10 +92,9 @@ export const useAppStore = create<AppStore>((set) => ({
               if (newImages.length > 1) {
                 const updatedImages = newImages.map((img, index) => {
                   const extension = img.finalFilename.split('.').pop() || '';
-                  const artikal = item.nazivArtikla;
                   return {
                     ...img,
-                    finalFilename: generateFilename(rb, artikal, extension, index)
+                    finalFilename: generateFilename(rb, item.brand, item.nazivArtikla, extension, index)
                   };
                 });
                 return {
@@ -72,14 +112,16 @@ export const useAppStore = create<AppStore>((set) => ({
             })()
           : item
       )
-    };
-  }),
+    }));
+    const state = get();
+    debouncedAutoSave(state.nazivUstanove, state.troskovnikItems);
+  },
 
-  removeImageFromItem: (rb, imageId) => set((state) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { generateFilename } = require('./fileUtils');
+  removeImageFromItem: (rb, imageId) => {
+    // Delete from IndexedDB first
+    deleteImageFromIndexedDB(imageId).catch(err => console.error('Failed to delete image from IndexedDB:', err));
 
-    return {
+    set((state) => ({
       troskovnikItems: state.troskovnikItems.map(item =>
         item.rb === rb
           ? (() => {
@@ -88,12 +130,11 @@ export const useAppStore = create<AppStore>((set) => ({
               // Regeneriraj nazive za preostale slike
               const updatedImages = filteredImages.map((img, index) => {
                 const extension = img.finalFilename.split('.').pop() || '';
-                const artikal = item.nazivArtikla;
                 return {
                   ...img,
                   finalFilename: filteredImages.length > 1
-                    ? generateFilename(rb, artikal, extension, index)
-                    : generateFilename(rb, artikal, extension)
+                    ? generateFilename(rb, item.brand, item.nazivArtikla, extension, index)
+                    : generateFilename(rb, item.brand, item.nazivArtikla, extension)
                 };
               });
 
@@ -105,21 +146,27 @@ export const useAppStore = create<AppStore>((set) => ({
             })()
           : item
       )
-    };
-  }),
+    }));
+    const state = get();
+    debouncedAutoSave(state.nazivUstanove, state.troskovnikItems);
+  },
 
-  updateImageFilename: (rb, imageId, newFilename) => set((state) => ({
-    troskovnikItems: state.troskovnikItems.map(item =>
-      item.rb === rb
-        ? {
-            ...item,
-            images: item.images.map(img =>
-              img.id === imageId ? { ...img, finalFilename: newFilename } : img
-            )
-          }
-        : item
-    )
-  })),
+  updateImageFilename: (rb, imageId, newFilename) => {
+    set((state) => ({
+      troskovnikItems: state.troskovnikItems.map(item =>
+        item.rb === rb
+          ? {
+              ...item,
+              images: item.images.map(img =>
+                img.id === imageId ? { ...img, finalFilename: newFilename } : img
+              )
+            }
+          : item
+      )
+    }));
+    const state = get();
+    debouncedAutoSave(state.nazivUstanove, state.troskovnikItems);
+  },
 
   toggleImageEdit: (rb, imageId) => set((state) => ({
     troskovnikItems: state.troskovnikItems.map(item =>
@@ -134,43 +181,45 @@ export const useAppStore = create<AppStore>((set) => ({
     )
   })),
 
-  reorderItems: (activeIndex, overIndex) => set((state) => {
-    if (activeIndex === overIndex) return state;
+  reorderItems: (activeIndex, overIndex) => {
+    set((state) => {
+      if (activeIndex === overIndex) return state;
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { generateFilename } = require('./fileUtils');
-    const items = [...state.troskovnikItems];
+      const items = [...state.troskovnikItems];
 
-    // Premjesti stavku
-    const [reorderedItem] = items.splice(activeIndex, 1);
-    items.splice(overIndex, 0, reorderedItem);
+      // Premjesti stavku
+      const [reorderedItem] = items.splice(activeIndex, 1);
+      items.splice(overIndex, 0, reorderedItem);
 
-    // Regeneriraj redne brojeve i nazive slika za sve stavke
-    const reorderedItems = items.map((item, index) => {
-      const newRb = index + 1;
+      // Regeneriraj redne brojeve i nazive slika za sve stavke
+      const reorderedItems = items.map((item, index) => {
+        const newRb = index + 1;
 
-      // Ažuriraj nazive slika s novim rednim brojem
-      const updatedImages = item.images.map((image, imgIndex) => {
-        const extension = image.finalFilename.split('.').pop() || '';
-        const finalFilename = item.images.length > 1
-          ? generateFilename(newRb, item.nazivArtikla, extension, imgIndex)
-          : generateFilename(newRb, item.nazivArtikla, extension);
+        // Ažuriraj nazive slika s novim rednim brojem
+        const updatedImages = item.images.map((image, imgIndex) => {
+          const extension = image.finalFilename.split('.').pop() || '';
+          const finalFilename = item.images.length > 1
+            ? generateFilename(newRb, item.brand, item.nazivArtikla, extension, imgIndex)
+            : generateFilename(newRb, item.brand, item.nazivArtikla, extension);
+
+          return {
+            ...image,
+            finalFilename
+          };
+        });
 
         return {
-          ...image,
-          finalFilename
+          ...item,
+          rb: newRb,
+          images: updatedImages
         };
       });
 
-      return {
-        ...item,
-        rb: newRb,
-        images: updatedImages
-      };
+      return { troskovnikItems: reorderedItems };
     });
-
-    return { troskovnikItems: reorderedItems };
-  }),
+    const state = get();
+    debouncedAutoSave(state.nazivUstanove, state.troskovnikItems);
+  },
 
   setProcessing: (processing) => set({ isProcessing: processing }),
 
@@ -219,5 +268,32 @@ export const useAppStore = create<AppStore>((set) => ({
     }
   },
 
-  reset: () => set(initialState)
+  reset: () => set(initialState),
+
+  loadFromStorage: async () => {
+    try {
+      const stored = await loadStateFromStorage();
+      if (stored) {
+        set({
+          nazivUstanove: stored.nazivUstanove,
+          troskovnikItems: stored.troskovnikItems,
+        });
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed to load from storage:', error);
+      return false;
+    }
+  },
+
+  clearStorage: async () => {
+    try {
+      await clearAllStorage();
+      set(initialState);
+    } catch (error) {
+      console.error('Failed to clear storage:', error);
+      throw error;
+    }
+  },
 }));
