@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { TroskovnikItem, ManifestEntry } from './types';
-import { calculateSHA256, compressImageForExport, CompressionLevel } from './fileUtils';
+import { calculateSHA256, compressImageForExport, CompressionLevel, addStampToImage } from './fileUtils';
 
 export async function generateZIP(
   nazivUstanove: string,
@@ -18,9 +18,12 @@ export async function generateZIP(
   for (const item of items) {
     for (const image of item.images) {
       try {
+        // Dodaj pečat na sliku
+        const stampedFile = await addStampToImage(image.file);
+
         // Komprimiraj sliku ako nije originalna kvaliteta
         const { file: processedFile, filename: processedFilename } = await compressImageForExport(
-          image.file,
+          stampedFile,
           image.finalFilename,
           compressionLevel
         );

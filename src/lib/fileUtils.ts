@@ -154,6 +154,291 @@ async function isPngTransparent(file: File): Promise<boolean> {
   });
 }
 
+function removeWhiteBackground(sourceCanvas: HTMLCanvasElement): HTMLCanvasElement {
+  const ctx = sourceCanvas.getContext('2d');
+  if (!ctx) {
+    return sourceCanvas;
+  }
+
+  const imageData = ctx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+  const pixels = imageData.data;
+
+  // VRLO agresivno uklanjanje bijelog - koristi se za slike koje imaju
+  // tamne elemente (crni tekst, plavi potpis) na bijeloj pozadini
+  for (let i = 0; i < pixels.length; i += 4) {
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+
+    // Izračunaj koliko je piksel blizu bijelom
+    // Ako su SVE komponente svjetle (>= 180), vjerojatno je pozadina
+    const isLightPixel = r >= 180 && g >= 180 && b >= 180;
+
+    // Dodatno: provjeri da li je piksel vrlo neutralan (siva/bijela)
+    // Tako da RGB vrijednosti nisu previše različite jedna od druge
+    const colorDiff = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(b - r));
+    const isNeutral = colorDiff < 30; // Razlika između kanala manja od 30
+
+    if (isLightPixel && isNeutral) {
+      // Napravi piksel potpuno transparentnim
+      pixels[i + 3] = 0;
+    } else if (isLightPixel) {
+      // Ako je svjetao ali nije neutralan (npr. svijetloplavi),
+      // smanji alpha proporcionalno
+      const lightness = (r + g + b) / 3;
+      const alphaReduction = ((lightness - 180) / 75) * 255; // 180-255 range
+      pixels[i + 3] = Math.max(0, pixels[i + 3] - alphaReduction);
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return sourceCanvas;
+}
+
+export async function addStampToImage(file: File): Promise<File> {
+  // Ako nije slika, vrati original (npr. PDF)
+  if (!file.type.startsWith('image/')) {
+    return file;
+  }
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const stampImg = new Image();
+
+    // Učitaj obje slike paralelno
+    let imageLoaded = false;
+    let stampLoaded = false;
+
+    const checkBothLoaded = () => {
+      if (imageLoaded && stampLoaded) {
+        processImages();
+      }
+    };
+
+    img.onload = () => {
+      imageLoaded = true;
+      checkBothLoaded();
+    };
+
+    stampImg.onload = () => {
+      // Učitaj pečat na privremeni canvas i ukloni bijelu pozadinu
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+
+      if (tempCtx) {
+        tempCanvas.width = stampImg.width;
+        tempCanvas.height = stampImg.height;
+        tempCtx.drawImage(stampImg, 0, 0);
+
+        // Ukloni bijelu pozadinu
+        removeWhiteBackground(tempCanvas);
+
+        // Zamijeni originalni stampImg s obrađenom verzijom
+        const processedStamp = new Image();
+        processedStamp.onload = () => {
+          stampImg.src = processedStamp.src;
+          stampLoaded = true;
+          checkBothLoaded();
+        };
+        processedStamp.onerror = () => {
+          console.warn('Greška pri obradi pečata');
+          stampLoaded = true;
+          checkBothLoaded();
+        };
+        processedStamp.src = tempCanvas.toDataURL('image/png');
+      } else {
+        stampLoaded = true;
+        checkBothLoaded();
+      }
+    };
+
+    img.onerror = () => reject(new Error('Greška pri učitavanju originalne slike'));
+    stampImg.onerror = () => {
+      console.warn('Greška pri učitavanju pečata, nastavljam bez pečata');
+      resolve(file); // Ako nema pečata, vrati original
+    };
+
+    const processImages = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          reject(new Error('Ne mogu kreirati canvas kontekst'));
+          return;
+        }
+
+        // Postavi canvas dimenzije na originalne dimenzije slike
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        // Nacrtaj originalnu sliku
+        ctx.drawImage(img, 0, 0);
+
+        // Izračunaj dimenzije pečata (56% širine originalne slike - 200% povećanje)
+        const stampScale = 0.56;
+        const stampWidth = img.width * stampScale;
+        const stampHeight = (stampImg.height / stampImg.width) * stampWidth;
+
+        // Padding od ruba (3% dimenzija slike)
+        const padding = Math.max(img.width, img.height) * 0.03;
+
+        // Pozicija: donji desni kut
+        const stampX = img.width - stampWidth - padding;
+        const stampY = img.height - stampHeight - padding;
+
+        // Postavi blend mode i opacity za prirodan "otisnut" izgled
+        ctx.globalAlpha = 0.9; // 90% opacity
+        ctx.globalCompositeOperation = 'multiply'; // Multiply blend mode
+
+        // Nacrtaj transparentni pečat s multiply blend mode-om
+        // Ovo će pečat učiniti da izgleda kao da je stvarno otisnut na slici
+        ctx.drawImage(stampImg, stampX, stampY, stampWidth, stampHeight);
+
+        // Resetuj blend mode i opacity
+        ctx.globalAlpha = 1.0;
+        ctx.globalCompositeOperation = 'source-over';
+
+        // Konvertiraj canvas u blob
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Greška pri kreiranju slike s pečatom'));
+              return;
+            }
+
+            // Kreiraj novi File objekt
+            const stampedFile = new File([blob], file.name, { type: file.type });
+            resolve(stampedFile);
+          },
+          file.type,
+          0.95 // Visoka kvaliteta
+        );
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    // Učitaj originalnu sliku iz File objekta
+    const reader = new FileReader();
+    reader.onload = () => {
+      img.src = reader.result as string;
+    };
+    reader.onerror = () => reject(new Error('Greška pri čitanju datoteke'));
+    reader.readAsDataURL(file);
+
+    // Učitaj pečat iz public foldera
+    stampImg.src = '/stamp.png';
+  });
+}
+
+export async function addWatermarkToImage(file: File, rb: number): Promise<File> {
+  // Ako nije slika, vrati original (npr. PDF)
+  if (!file.type.startsWith('image/')) {
+    return file;
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const img = new Image();
+
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          reject(new Error('Ne mogu kreirati canvas kontekst'));
+          return;
+        }
+
+        // Postavi canvas dimenzije na originalne dimenzije slike
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        // Nacrtaj originalnu sliku
+        ctx.drawImage(img, 0, 0);
+
+        // Pripremi tekst
+        const watermarkText = `stavka ${rb}. troškovnika`;
+
+        // Izračunaj font size ovisno o veličini slike (responsive)
+        const fontSize = Math.max(20, Math.min(img.width / 20, 48));
+        ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+
+        // Izmjeri širinu teksta
+        const textMetrics = ctx.measureText(watermarkText);
+        const textWidth = textMetrics.width;
+        const textHeight = fontSize;
+
+        // Definiraj padding
+        const paddingX = fontSize * 0.8;
+        const paddingY = fontSize * 0.5;
+
+        // Pozicija: centrirano pri vrhu
+        const rectX = (canvas.width - textWidth - paddingX * 2) / 2;
+        const rectY = fontSize * 0.8;
+        const rectWidth = textWidth + paddingX * 2;
+        const rectHeight = textHeight + paddingY * 2;
+
+        // Nacrtaj poluprozirnu pozadinu sa zaobljenim rubovima
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.beginPath();
+        const radius = fontSize * 0.3;
+        ctx.moveTo(rectX + radius, rectY);
+        ctx.lineTo(rectX + rectWidth - radius, rectY);
+        ctx.quadraticCurveTo(rectX + rectWidth, rectY, rectX + rectWidth, rectY + radius);
+        ctx.lineTo(rectX + rectWidth, rectY + rectHeight - radius);
+        ctx.quadraticCurveTo(rectX + rectWidth, rectY + rectHeight, rectX + rectWidth - radius, rectY + rectHeight);
+        ctx.lineTo(rectX + radius, rectY + rectHeight);
+        ctx.quadraticCurveTo(rectX, rectY + rectHeight, rectX, rectY + rectHeight - radius);
+        ctx.lineTo(rectX, rectY + radius);
+        ctx.quadraticCurveTo(rectX, rectY, rectX + radius, rectY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Nacrtaj tekst
+        const textX = canvas.width / 2;
+        const textY = rectY + paddingY + fontSize * 0.75;
+
+        // Dodaj sjenku za bolju čitljivost
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 2;
+
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(watermarkText, textX, textY);
+
+        // Konvertiraj canvas u blob
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Greška pri kreiranju slike s vodenim žigom'));
+              return;
+            }
+
+            // Kreiraj novi File objekt
+            const watermarkedFile = new File([blob], file.name, { type: file.type });
+            resolve(watermarkedFile);
+          },
+          file.type,
+          1.0 // Максимална kvaliteta za watermark
+        );
+      };
+
+      img.onerror = () => reject(new Error('Greška pri učitavanju slike'));
+      img.src = reader.result as string;
+    };
+
+    reader.onerror = () => reject(new Error('Greška pri čitanju datoteke'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function compressImageForExport(
   file: File,
   originalFilename: string,

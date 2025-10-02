@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { UploadedImage, TroskovnikItem } from './types';
-import { isAllowedFileType, createThumbnail } from './fileUtils';
+import { isAllowedFileType, createThumbnail, addWatermarkToImage } from './fileUtils';
 
 export interface ImportResult {
   imported: number;
@@ -68,20 +68,23 @@ export async function parseZipFile(file: File): Promise<{ files: File[], errors:
   return { files, errors };
 }
 
-export async function createUploadedImageFromFile(file: File): Promise<UploadedImage> {
+export async function createUploadedImageFromFile(file: File, rb: number): Promise<UploadedImage> {
+  // Dodaj vodeni žig na sliku
+  const watermarkedFile = await addWatermarkToImage(file, rb);
+
   let thumbnail: string | undefined;
 
   try {
-    thumbnail = await createThumbnail(file);
+    thumbnail = await createThumbnail(watermarkedFile);
   } catch (error) {
     console.warn('Greška pri stvaranju thumbnail-a:', error);
   }
 
   return {
     id: `${Date.now()}-${Math.random()}`,
-    file,
+    file: watermarkedFile,
     originalFilename: file.name,
-    finalFilename: file.name, // Bit će preimenovano u store-u
+    finalFilename: watermarkedFile.name, // Bit će preimenovano u store-u
     isEditing: false,
     thumbnail
   };
@@ -120,7 +123,7 @@ export async function importImagesToItems(
     }
 
     try {
-      const uploadedImage = await createUploadedImageFromFile(file);
+      const uploadedImage = await createUploadedImageFromFile(file, rb);
       importedImages.push({ rb, image: uploadedImage });
       result.imported++;
     } catch (error) {
