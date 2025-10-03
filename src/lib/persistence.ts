@@ -87,12 +87,12 @@ export async function loadStateFromStorage(): Promise<{
       status: item.status,
       images: item.images
         .map(img => {
-          const file = imageMap.get(img.id);
-          if (!file) return null;
+          const imageData = imageMap.get(img.id);
+          if (!imageData) return null;
 
           const uploadedImage: UploadedImage = {
             id: img.id,
-            file,
+            file: imageData.file,
             originalFilename: img.originalFilename,
             finalFilename: img.finalFilename,
             isEditing: false,

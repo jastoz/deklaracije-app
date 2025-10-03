@@ -19,7 +19,7 @@ interface DeklaracijeDB extends DBSchema {
 }
 
 const DB_NAME = 'deklaracije-db';
-const DB_VERSION = 1;
+const DB_VERSION = 3; // Increment version to clear old watermarked images
 
 let dbInstance: IDBPDatabase<DeklaracijeDB> | null = null;
 
@@ -71,15 +71,15 @@ export async function getImageFromIndexedDB(imageId: string): Promise<File | nul
   return new File([record.blob], record.originalFilename, { type: record.blob.type });
 }
 
-export async function getAllImagesFromIndexedDB(): Promise<Map<string, File>> {
+export async function getAllImagesFromIndexedDB(): Promise<Map<string, { file: File }>> {
   const db = await getDB();
   const allRecords = await db.getAll('images');
 
-  const imageMap = new Map<string, File>();
+  const imageMap = new Map<string, { file: File }>();
 
   for (const record of allRecords) {
     const file = new File([record.blob], record.originalFilename, { type: record.blob.type });
-    imageMap.set(record.id, file);
+    imageMap.set(record.id, { file });
   }
 
   return imageMap;

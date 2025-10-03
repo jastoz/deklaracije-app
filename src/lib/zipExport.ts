@@ -6,7 +6,8 @@ export async function generateZIP(
   nazivUstanove: string,
   items: TroskovnikItem[],
   compressionLevel: CompressionLevel = 'optimized',
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  includeStamp: boolean = true
 ): Promise<Blob> {
   const zip = new JSZip();
   const manifestEntries: ManifestEntry[] = [];
@@ -18,12 +19,18 @@ export async function generateZIP(
   for (const item of items) {
     for (const image of item.images) {
       try {
-        // Dodaj pečat na sliku
-        const stampedFile = await addStampToImage(image.file);
+        // Odaberi file: ako includeStamp je true, dodaj stamp
+        let imageToProcess: File;
+        if (includeStamp) {
+          imageToProcess = await addStampToImage(image.file);
+        } else {
+          // Koristi čistu sliku (slike su sada uvijek čiste)
+          imageToProcess = image.file;
+        }
 
         // Komprimiraj sliku ako nije originalna kvaliteta
         const { file: processedFile, filename: processedFilename } = await compressImageForExport(
-          stampedFile,
+          imageToProcess,
           image.finalFilename,
           compressionLevel
         );
@@ -59,13 +66,14 @@ export async function generateZIP(
     }
   }
 
-  // Generiraj manifest.csv
-  const csvContent = generateManifestCSV(manifestEntries);
-  zip.file('manifest.csv', csvContent);
+  // Generiraj manifest.csv i summary.txt samo ako includeStamp je true
+  if (includeStamp) {
+    const csvContent = generateManifestCSV(manifestEntries);
+    zip.file('manifest.csv', csvContent);
 
-  // Generiraj summary.txt
-  const summaryContent = generateSummary(nazivUstanove, items, manifestEntries);
-  zip.file('summary.txt', summaryContent);
+    const summaryContent = generateSummary(nazivUstanove, items, manifestEntries);
+    zip.file('summary.txt', summaryContent);
+  }
 
   // Generiraj ZIP
   return await zip.generateAsync({ type: 'blob' });

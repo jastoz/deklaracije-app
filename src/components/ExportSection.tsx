@@ -32,7 +32,7 @@ export function ExportSection() {
     validationIssues.push('Nema dodanih fotografija');
   }
 
-  const handleExport = async () => {
+  const handleExport = async (includeStamp: boolean = true) => {
     if (!canExport) return;
 
     setIsExporting(true);
@@ -43,7 +43,8 @@ export function ExportSection() {
         nazivUstanove,
         troskovnikItems,
         compressionLevel,
-        (progress) => setCompressionProgress(progress)
+        (progress) => setCompressionProgress(progress),
+        includeStamp
       );
       downloadZIP(zipBlob, nazivUstanove);
     } catch (error) {
@@ -226,10 +227,10 @@ export function ExportSection() {
         </div>
       )}
 
-      {/* Export gumb */}
-      <div className="flex justify-center">
+      {/* Export gumbovi */}
+      <div className="flex justify-center gap-4">
         <button
-          onClick={handleExport}
+          onClick={() => handleExport(true)}
           disabled={!canExport || isExporting}
           className={`
             inline-flex items-center gap-3 px-6 py-3 rounded-lg font-semibold transition-colors
@@ -240,7 +241,22 @@ export function ExportSection() {
           `}
         >
           <Download className={`w-5 h-5 ${isExporting ? 'animate-spin' : ''}`} />
-          {isExporting ? 'Generiranje ZIP...' : 'Generiraj ZIP'}
+          {isExporting ? 'Generiranje ZIP...' : 'Generiraj ZIP s pečatom'}
+        </button>
+
+        <button
+          onClick={() => handleExport(false)}
+          disabled={!canExport || isExporting}
+          className={`
+            inline-flex items-center gap-3 px-6 py-3 rounded-lg font-semibold transition-colors
+            ${canExport && !isExporting
+              ? 'bg-green-600 hover:bg-green-700 text-white'
+              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }
+          `}
+        >
+          <Download className={`w-5 h-5 ${isExporting ? 'animate-spin' : ''}`} />
+          {isExporting ? 'Generiranje ZIP...' : 'Generiraj ZIP bez pečata'}
         </button>
       </div>
     </div>

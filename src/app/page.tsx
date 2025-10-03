@@ -5,12 +5,21 @@ import { FileUpload } from '@/components/FileUpload';
 import { TroskovnikTable } from '@/components/TroskovnikTable';
 import { ImportSection } from '@/components/ImportSection';
 import { ExportSection } from '@/components/ExportSection';
+import { PDFExportSection } from '@/components/PDFExportSection';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
 import { StorageInfo } from '@/components/StorageInfo';
 import { RestoreDialog } from '@/components/RestoreDialog';
+import { ArrowDown } from 'lucide-react';
 
 export default function Home() {
   const { nazivUstanove, setNazivUstanove, troskovnikItems, isProcessing } = useAppStore();
+
+  const scrollToExport = () => {
+    const exportSection = document.getElementById('export-section');
+    if (exportSection) {
+      exportSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 overflow-y-auto">
@@ -65,6 +74,16 @@ export default function Home() {
           {/* Troskovnik Table */}
           {troskovnikItems.length > 0 && (
             <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">Troškovnik</h2>
+                <button
+                  onClick={scrollToExport}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                >
+                  <ArrowDown className="w-4 h-4" />
+                  Idi na Export
+                </button>
+              </div>
               <TroskovnikTable />
             </div>
           )}
@@ -73,7 +92,14 @@ export default function Home() {
           {troskovnikItems.length > 0 && <ImportSection />}
 
           {/* Export Section */}
-          {troskovnikItems.length > 0 && <ExportSection />}
+          {troskovnikItems.length > 0 && (
+            <div id="export-section">
+              <ExportSection />
+            </div>
+          )}
+
+          {/* PDF Export Section */}
+          {troskovnikItems.length > 0 && <PDFExportSection />}
 
           {/* Error Display - na dnu */}
           <ErrorDisplay />

@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { UploadedImage, TroskovnikItem } from './types';
-import { isAllowedFileType, createThumbnail, addWatermarkToImage } from './fileUtils';
+import { isAllowedFileType, createThumbnail } from './fileUtils';
 
 export interface ImportResult {
   imported: number;
@@ -69,22 +69,19 @@ export async function parseZipFile(file: File): Promise<{ files: File[], errors:
 }
 
 export async function createUploadedImageFromFile(file: File, rb: number): Promise<UploadedImage> {
-  // Dodaj vodeni žig na sliku
-  const watermarkedFile = await addWatermarkToImage(file, rb);
-
   let thumbnail: string | undefined;
 
   try {
-    thumbnail = await createThumbnail(watermarkedFile);
+    thumbnail = await createThumbnail(file);
   } catch (error) {
     console.warn('Greška pri stvaranju thumbnail-a:', error);
   }
 
   return {
     id: `${Date.now()}-${Math.random()}`,
-    file: watermarkedFile,
+    file: file, // Čista slika bez watermark-a
     originalFilename: file.name,
-    finalFilename: watermarkedFile.name, // Bit će preimenovano u store-u
+    finalFilename: file.name, // Bit će preimenovano u store-u
     isEditing: false,
     thumbnail
   };

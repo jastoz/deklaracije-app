@@ -5,7 +5,7 @@ import { useDropzone } from 'react-dropzone';
 import { Upload, Image as ImageIcon, X } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { UploadedImage } from '@/lib/types';
-import { generateFilename, getFileExtension, isAllowedFileType, createThumbnail, addWatermarkToImage } from '@/lib/fileUtils';
+import { generateFilename, getFileExtension, isAllowedFileType, createThumbnail } from '@/lib/fileUtils';
 
 interface ImageUploadProps {
   rb: number;
@@ -26,10 +26,7 @@ export function ImageUpload({ rb, brand, nazivArtikla, images }: ImageUploadProp
       }
 
       try {
-        // Dodaj vodeni žig na sliku
-        const watermarkedFile = await addWatermarkToImage(file, rb);
-
-        const extension = getFileExtension(watermarkedFile.name);
+        const extension = getFileExtension(file.name);
         let finalFilename: string;
 
         // Ako ima već slika ili će ih biti više, dodaj redni broj
@@ -42,14 +39,14 @@ export function ImageUpload({ rb, brand, nazivArtikla, images }: ImageUploadProp
 
         let thumbnail: string | undefined;
         try {
-          thumbnail = await createThumbnail(watermarkedFile);
+          thumbnail = await createThumbnail(file);
         } catch (error) {
           console.warn('Greška pri stvaranju thumbnail-a:', error);
         }
 
         const uploadedImage: UploadedImage = {
           id: `${Date.now()}-${Math.random()}`,
-          file: watermarkedFile,
+          file: file, // Čista slika bez watermark-a
           originalFilename: file.name,
           finalFilename,
           isEditing: false,
