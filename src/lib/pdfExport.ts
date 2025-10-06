@@ -1,6 +1,46 @@
 import { jsPDF } from 'jspdf';
 import { TroskovnikItem } from './types';
 
+// Load pdfjs-dist from CDN to avoid webpack issues
+let pdfjsLib: any = null;
+
+async function loadPdfJs() {
+  if (typeof window === 'undefined') {
+    throw new Error('PDF.js can only be loaded in browser');
+  }
+
+  if (!pdfjsLib) {
+    // Load from window if already loaded via CDN
+    if ((window as any).pdfjsLib) {
+      pdfjsLib = (window as any).pdfjsLib;
+      return pdfjsLib;
+    }
+
+    // Dynamically load script from CDN
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      script.async = true;
+
+      script.onload = () => {
+        pdfjsLib = (window as any).pdfjsLib;
+        if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+        resolve(pdfjsLib);
+      };
+
+      script.onerror = () => {
+        reject(new Error('Failed to load PDF.js from CDN'));
+      };
+
+      document.head.appendChild(script);
+    });
+  }
+
+  return pdfjsLib;
+}
+
 export type PDFQuality = 'high' | 'medium' | 'low';
 
 export interface PDFExportOptions {
@@ -97,10 +137,173 @@ function removeWhiteBackground(sourceCanvas: HTMLCanvasElement): void {
   ctx.putImageData(imageData, 0, 0);
 }
 
+// Convert PDF file to array of canvas images (one per page)
+async function convertPdfToCanvases(file: File, maxDimension: number): Promise<HTMLCanvasElement[]> {
+  const pdfjs = await loadPdfJs();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  const canvases: HTMLCanvasElement[] = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 1.0 });
+
+    // Calculate scale to fit maxDimension
+    const scale = Math.min(
+      maxDimension / viewport.width,
+      maxDimension / viewport.height,
+      1.0 // Don't upscale
+    );
+
+    const scaledViewport = page.getViewport({ scale });
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      throw new Error('Cannot create canvas context for PDF rendering');
+    }
+
+    canvas.width = scaledViewport.width;
+    canvas.height = scaledViewport.height;
+
+    await page.render({
+      canvasContext: context,
+      viewport: scaledViewport,
+    }).promise;
+
+    canvases.push(canvas);
+  }
+
+  return canvases;
+}
+
 interface ProcessedImageResult {
   dataURL: string;
   width: number;
   height: number;
+}
+
+// Process canvas with watermark and stamp
+function processCanvasWithWatermark(
+  sourceCanvas: HTMLCanvasElement,
+  rb: number,
+  includeWatermark: boolean,
+  stampImage: HTMLImageElement | null,
+  quality: number
+): ProcessedImageResult {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    throw new Error('Ne mogu kreirati canvas kontekst');
+  }
+
+  const { width, height } = sourceCanvas;
+  canvas.width = width;
+  canvas.height = height;
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  // Draw source canvas
+  ctx.drawImage(sourceCanvas, 0, 0);
+
+  // Add watermark text + stamp if enabled
+  if (includeWatermark) {
+    // Add watermark text - gornji lijevi kut, decentno
+    const watermarkText = `stavka ${rb}. troškovnika`;
+    const fontSize = Math.max(14, Math.min(width / 30, 24));
+    ctx.font = `${fontSize}px Arial, sans-serif`;
+
+    const textMetrics = ctx.measureText(watermarkText);
+    const textWidth = textMetrics.width;
+    const textHeight = fontSize;
+    const paddingX = fontSize * 0.6;
+    const paddingY = fontSize * 0.4;
+
+    const margin = width * 0.01;
+    const rectX = margin;
+    const rectY = margin;
+    const rectWidth = textWidth + paddingX * 2;
+    const rectHeight = textHeight + paddingY * 2;
+
+    // Draw semi-transparent background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.beginPath();
+    const radius = fontSize * 0.25;
+    ctx.moveTo(rectX + radius, rectY);
+    ctx.lineTo(rectX + rectWidth - radius, rectY);
+    ctx.quadraticCurveTo(rectX + rectWidth, rectY, rectX + rectWidth, rectY + radius);
+    ctx.lineTo(rectX + rectWidth, rectY + rectHeight - radius);
+    ctx.quadraticCurveTo(rectX + rectWidth, rectY + rectHeight, rectX + rectWidth - radius, rectY + rectHeight);
+    ctx.lineTo(rectX + radius, rectY + rectHeight);
+    ctx.quadraticCurveTo(rectX, rectY + rectHeight, rectX, rectY + rectHeight - radius);
+    ctx.lineTo(rectX, rectY + radius);
+    ctx.quadraticCurveTo(rectX, rectY, rectX + radius, rectY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Draw text - lijevo poravnat
+    const textX = rectX + paddingX;
+    const textY = rectY + paddingY + fontSize * 0.7;
+
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowBlur = 2;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 1;
+
+    ctx.fillStyle = 'white';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(watermarkText, textX, textY);
+
+    // Reset shadow
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    // Add stamp if available - donji desni kut
+    if (stampImage) {
+      const stampAspectRatio = stampImage.width / stampImage.height;
+      const fixedStampWidth = 500;
+      let stampWidth = fixedStampWidth;
+      let stampHeight = fixedStampWidth / stampAspectRatio;
+
+      const maxWidth = width * 0.8;
+      const maxHeight = height * 0.95;
+
+      if (stampWidth > maxWidth || stampHeight > maxHeight) {
+        const scaleByWidth = maxWidth / stampWidth;
+        const scaleByHeight = maxHeight / stampHeight;
+        const scale = Math.min(scaleByWidth, scaleByHeight);
+
+        stampWidth = fixedStampWidth * scale;
+        stampHeight = stampWidth / stampAspectRatio;
+      }
+
+      const padding = width * 0.02;
+      const stampX = width - stampWidth - padding;
+      const stampY = height - stampHeight - padding;
+
+      ctx.globalAlpha = 0.9;
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.drawImage(stampImage, stampX, stampY, stampWidth, stampHeight);
+
+      // Reset blend mode
+      ctx.globalAlpha = 1.0;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  }
+
+  const dataURL = canvas.toDataURL('image/jpeg', quality);
+
+  return {
+    dataURL,
+    width,
+    height,
+  };
 }
 
 // OPTIMIZED: Kombinira watermark + stamp + resize u JEDAN canvas prolaz
@@ -111,11 +314,45 @@ async function processImageForPDF(
   stampImage: HTMLImageElement | null,
   maxDimension: number,
   quality: number
-): Promise<ProcessedImageResult> {
-  return new Promise((resolve, reject) => {
+): Promise<ProcessedImageResult[]> {
+  return new Promise(async (resolve, reject) => {
     // Provjeri da li je file valjan
-    if (!file || !(file instanceof File)) {
-      reject(new Error(`Nevažeća datoteka za stavku ${rb}`));
+    if (!file) {
+      console.error('File je null ili undefined za stavku', rb);
+      reject(new Error(`File objekt nedostaje za stavku ${rb}. Molimo osvježite stranicu i pokušajte ponovno.`));
+      return;
+    }
+
+    if (!(file instanceof File)) {
+      console.error('File NIJE File objekt za stavku', rb, 'Tip:', typeof file, 'Vrijednost:', file);
+      reject(new Error(`Nevažeći File objekt za stavku ${rb}. Tip: ${typeof file}. Molimo osvježite stranicu i ponovo učitajte slike.`));
+      return;
+    }
+
+    // Handle PDF files - convert to canvases first
+    if (file.type === 'application/pdf') {
+      try {
+        const canvases = await convertPdfToCanvases(file, maxDimension);
+        const results: ProcessedImageResult[] = [];
+
+        for (const canvas of canvases) {
+          const result = processCanvasWithWatermark(canvas, rb, includeWatermark, stampImage, quality);
+          results.push(result);
+        }
+
+        resolve(results);
+        return;
+      } catch (error) {
+        console.error('Greška pri konverziji PDF-a:', error);
+        reject(new Error(`Greška pri konverziji PDF-a za stavku ${rb}: ${error}`));
+        return;
+      }
+    }
+
+    // Provjeri da li je file slika
+    if (!file.type || !file.type.startsWith('image/')) {
+      console.error('File nema valjan image type za stavku', rb, 'Type:', file.type, 'Name:', file.name);
+      reject(new Error(`Nevažeći tip datoteke za stavku ${rb}: ${file.type || 'nepoznat'}. Očekuje se image/* ili application/pdf.`));
       return;
     }
 
@@ -164,106 +401,11 @@ async function processImageForPDF(
         // STEP 2: Draw original image (resized)
         ctx.drawImage(img, 0, 0, width, height);
 
-        // STEP 3: Add watermark text + stamp if enabled
-        if (includeWatermark) {
-          // Add watermark text - gornji lijevi kut, decentno
-          const watermarkText = `stavka ${rb}. troškovnika`;
-          const fontSize = Math.max(14, Math.min(width / 30, 24));
-          ctx.font = `${fontSize}px Arial, sans-serif`;
+        // STEP 3: Process with watermark and stamp
+        const result = processCanvasWithWatermark(canvas, rb, includeWatermark, stampImage, quality);
 
-          const textMetrics = ctx.measureText(watermarkText);
-          const textWidth = textMetrics.width;
-          const textHeight = fontSize;
-          const paddingX = fontSize * 0.6;
-          const paddingY = fontSize * 0.4;
-
-          const margin = width * 0.01; // Fiksni margin ovisno samo o širini - konzistentna pozicija
-          const rectX = margin;
-          const rectY = margin;
-          const rectWidth = textWidth + paddingX * 2;
-          const rectHeight = textHeight + paddingY * 2;
-
-          // Draw semi-transparent background
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-          ctx.beginPath();
-          const radius = fontSize * 0.25;
-          ctx.moveTo(rectX + radius, rectY);
-          ctx.lineTo(rectX + rectWidth - radius, rectY);
-          ctx.quadraticCurveTo(rectX + rectWidth, rectY, rectX + rectWidth, rectY + radius);
-          ctx.lineTo(rectX + rectWidth, rectY + rectHeight - radius);
-          ctx.quadraticCurveTo(rectX + rectWidth, rectY + rectHeight, rectX + rectWidth - radius, rectY + rectHeight);
-          ctx.lineTo(rectX + radius, rectY + rectHeight);
-          ctx.quadraticCurveTo(rectX, rectY + rectHeight, rectX, rectY + rectHeight - radius);
-          ctx.lineTo(rectX, rectY + radius);
-          ctx.quadraticCurveTo(rectX, rectY, rectX + radius, rectY);
-          ctx.closePath();
-          ctx.fill();
-
-          // Draw text - lijevo poravnat
-          const textX = rectX + paddingX;
-          const textY = rectY + paddingY + fontSize * 0.7;
-
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-          ctx.shadowBlur = 2;
-          ctx.shadowOffsetX = 1;
-          ctx.shadowOffsetY = 1;
-
-          ctx.fillStyle = 'white';
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(watermarkText, textX, textY);
-
-          // Reset shadow
-          ctx.shadowColor = 'transparent';
-          ctx.shadowBlur = 0;
-          ctx.shadowOffsetX = 0;
-          ctx.shadowOffsetY = 0;
-
-          // Add stamp if available - donji desni kut
-          if (stampImage) {
-            // FIKSNA veličina pečata - UVIJEK ista
-            const stampAspectRatio = stampImage.width / stampImage.height;
-            const fixedStampWidth = 500; // Fiksna veličina u pikselima (smanjena sa 800)
-            let stampWidth = fixedStampWidth;
-            let stampHeight = fixedStampWidth / stampAspectRatio;
-
-            // Ekstremna sigurnosna provjera - SAMO za jako male slike
-            // Dopusti da pečat zauzme do 95% visine i 80% širine
-            const maxWidth = width * 0.8;
-            const maxHeight = height * 0.95;
-
-            // SAMO ako ne stane uopće, tek onda smanji
-            if (stampWidth > maxWidth || stampHeight > maxHeight) {
-              const scaleByWidth = maxWidth / stampWidth;
-              const scaleByHeight = maxHeight / stampHeight;
-              const scale = Math.min(scaleByWidth, scaleByHeight);
-
-              stampWidth = fixedStampWidth * scale;
-              stampHeight = stampWidth / stampAspectRatio;
-            }
-
-            const padding = width * 0.02;
-            const stampX = width - stampWidth - padding;
-            const stampY = height - stampHeight - padding;
-
-            ctx.globalAlpha = 0.9;
-            ctx.globalCompositeOperation = 'multiply';
-            ctx.drawImage(stampImage, stampX, stampY, stampWidth, stampHeight);
-
-            // Reset blend mode
-            ctx.globalAlpha = 1.0;
-            ctx.globalCompositeOperation = 'source-over';
-          }
-        }
-
-        // STEP 4: Convert to DataURL (single conversion)
-        const dataURL = canvas.toDataURL('image/jpeg', quality);
-
-        resolve({
-          dataURL,
-          width,
-          height,
-        });
+        // Return as array with single result (images return 1 page, PDFs return multiple)
+        resolve([result]);
       };
 
       img.onerror = (e) => {
@@ -291,14 +433,46 @@ export async function generatePDF(
 ): Promise<Blob> {
   const qualitySettings = PDF_QUALITY_PRESETS[options.quality];
 
-  // Filtriraj stavke prema range-u
-  const filteredItems = items.filter(item => item.rb >= fromRb && item.rb <= toRb);
+  // Filtriraj stavke prema range-u i one koje imaju barem jednu sliku/PDF
+  const filteredItems = items.filter(item =>
+    item.rb >= fromRb && item.rb <= toRb && item.images.length > 0
+  );
 
-  // Izbroji ukupan broj slika
-  const totalImages = filteredItems.reduce((sum, item) => sum + item.images.length, 0);
+  // Debug: Ispiši tipove svih datoteka
+  console.log('=== PDF Export Debug ===');
+  filteredItems.forEach(item => {
+    console.log(`Stavka ${item.rb}:`, item.images.map(img => ({
+      name: img.originalFilename,
+      type: img.file.type,
+      isImage: img.file.type.startsWith('image/'),
+      isPdf: img.file.type === 'application/pdf',
+      hasType: !!img.file.type
+    })));
+  });
 
-  if (totalImages === 0) {
-    throw new Error('Nema slika u odabranom rasponu');
+  // Izbroji ukupan broj slika i PDF-ova
+  const totalImages = filteredItems.reduce((sum, item) =>
+    sum + item.images.filter(img => img.file.type && img.file.type.startsWith('image/')).length, 0
+  );
+  const totalPdfs = filteredItems.reduce((sum, item) =>
+    sum + item.images.filter(img => img.file.type === 'application/pdf').length, 0
+  );
+  const totalFiles = totalImages + totalPdfs;
+  const totalInvalid = filteredItems.reduce((sum, item) =>
+    sum + item.images.filter(img => !img.file.type).length, 0
+  );
+
+  console.log(`Ukupno slika: ${totalImages}, PDF-ova: ${totalPdfs}, Ukupno: ${totalFiles}, Nevažećih: ${totalInvalid}`);
+
+  if (totalFiles === 0) {
+    throw new Error('Nema slika ili PDF dokumenata u odabranom rasponu');
+  }
+
+  if (totalPdfs > 0) {
+    console.info(`${totalPdfs} PDF dokumenata će biti konvertirano u slike`);
+  }
+  if (totalInvalid > 0) {
+    console.error(`⚠️ UPOZORENJE: ${totalInvalid} datoteka NEMA valjan type - neće biti uključene u PDF!`);
   }
 
   // OPTIMIZATION: Load stamp image once at the beginning
@@ -321,16 +495,16 @@ export async function generatePDF(
   let isFirstPage = true;
   let processedImages = 0;
 
-  // OPTIMIZATION: Batch processing - process 3 images in parallel
+  // OPTIMIZATION: Batch processing - process 3 files in parallel
   const BATCH_SIZE = 3;
   const CHUNK_SIZE = 10;
 
   for (const item of filteredItems) {
-    // Process images in batches of BATCH_SIZE
+    // Process files in batches of BATCH_SIZE
     for (let i = 0; i < item.images.length; i += BATCH_SIZE) {
       const batch = item.images.slice(i, i + BATCH_SIZE);
 
-      // Process batch in parallel
+      // Process batch in parallel - each file can return multiple pages (for PDFs)
       const processedBatch = await Promise.all(
         batch.map(image =>
           processImageForPDF(
@@ -341,14 +515,15 @@ export async function generatePDF(
             qualitySettings.maxDimension,
             qualitySettings.imageQuality
           ).catch(error => {
-            console.error(`Greška pri obradi slike ${image.originalFilename}:`, error);
-            throw new Error(`Greška pri obradi slike ${image.originalFilename}`);
+            console.error(`Greška pri obradi datoteke ${image.originalFilename}:`, error);
+            throw new Error(`Greška pri obradi datoteke ${image.originalFilename}`);
           })
         )
       );
 
-      // Add processed images to PDF
-      for (const result of processedBatch) {
+      // Add processed images to PDF - flatten array since PDFs return multiple pages
+      for (const resultArray of processedBatch) {
+        for (const result of resultArray) {
         try {
           const { dataURL, width: imgWidth, height: imgHeight } = result;
 
@@ -403,7 +578,7 @@ export async function generatePDF(
           // Update progress
           processedImages++;
           if (onProgress) {
-            onProgress(processedImages, totalImages);
+            onProgress(processedImages, totalFiles);
           }
 
           // Garbage collect every CHUNK_SIZE images
@@ -411,8 +586,9 @@ export async function generatePDF(
             await new Promise(resolve => setTimeout(resolve, 0));
           }
         } catch (error) {
-          console.error('Greška pri dodavanju slike u PDF:', error);
+          console.error('Greška pri dodavanju stranice u PDF:', error);
           throw error;
+        }
         }
       }
     }
