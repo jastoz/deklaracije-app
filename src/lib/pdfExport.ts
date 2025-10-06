@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import { TroskovnikItem } from './types';
 
 // Load pdfjs-dist from CDN to avoid webpack issues
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let pdfjsLib: any = null;
 
 async function loadPdfJs() {
@@ -11,7 +12,9 @@ async function loadPdfJs() {
 
   if (!pdfjsLib) {
     // Load from window if already loaded via CDN
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((window as any).pdfjsLib) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       pdfjsLib = (window as any).pdfjsLib;
       return pdfjsLib;
     }
@@ -23,6 +26,7 @@ async function loadPdfJs() {
       script.async = true;
 
       script.onload = () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         pdfjsLib = (window as any).pdfjsLib;
         if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
           pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';

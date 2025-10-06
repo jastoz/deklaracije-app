@@ -30,7 +30,7 @@ async function getDB(): Promise<IDBPDatabase<DeklaracijeDB>> {
   }
 
   dbInstance = await openDB<DeklaracijeDB>(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion, newVersion, transaction) {
+    upgrade(db, oldVersion) {
       // If upgrading to version 4, delete old images store to clear corrupt data
       if (oldVersion < 4 && db.objectStoreNames.contains('images')) {
         db.deleteObjectStore('images');

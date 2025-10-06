@@ -46,7 +46,6 @@ export function StorageInfo() {
     }
   };
 
-  const totalImages = troskovnikItems.reduce((sum, item) => sum + item.images.length, 0);
   const hasData = troskovnikItems.length > 0 || storageInfo.usage > 0;
 
   return (
