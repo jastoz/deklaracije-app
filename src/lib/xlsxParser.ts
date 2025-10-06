@@ -71,10 +71,10 @@ export function parseXLSX(file: File): Promise<ParsedXLSXData> {
           });
         });
 
-        // Ograniči na 200 stavki
-        if (items.length > 200) {
-          errors.push(`Troškovnik sadrži ${items.length} stavki. Maksimalno je dozvoljeno 200.`);
-          items.splice(200);
+        // Ograniči na 500 stavki
+        if (items.length > 500) {
+          errors.push(`Troškovnik sadrži ${items.length} stavki. Maksimalno je dozvoljeno 500.`);
+          items.splice(500);
         }
 
         resolve({ items, errors });
