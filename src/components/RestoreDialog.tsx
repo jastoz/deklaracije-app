@@ -72,6 +72,19 @@ export function RestoreDialog() {
     }
   };
 
+  const handleClose = async () => {
+    // Kad korisnik zatvori dialog bez izbora, obriši podatke
+    // da se ne dupliciraju pri sljedećem upload-u
+    if (confirm('Zatvaranjem ovog dijaloga bez izbora će biti obrisani spremljeni podaci. Nastaviti?')) {
+      try {
+        await clearStorage();
+        setShowDialog(false);
+      } catch (error) {
+        alert('Greška pri brisanju podataka: ' + error);
+      }
+    }
+  };
+
   if (!showDialog) return null;
 
   return (
@@ -96,7 +109,7 @@ export function RestoreDialog() {
             </div>
           </div>
           <button
-            onClick={() => setShowDialog(false)}
+            onClick={handleClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
           >
             <X className="w-5 h-5" />

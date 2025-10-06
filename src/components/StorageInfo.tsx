@@ -47,6 +47,7 @@ export function StorageInfo() {
   };
 
   const totalImages = troskovnikItems.reduce((sum, item) => sum + item.images.length, 0);
+  const hasData = troskovnikItems.length > 0 || storageInfo.usage > 0;
 
   return (
     <div className="bg-white p-4 rounded-lg shadow-sm border space-y-3">
@@ -57,10 +58,10 @@ export function StorageInfo() {
         </div>
         <button
           onClick={handleClearAll}
-          disabled={isClearing || totalImages === 0}
+          disabled={isClearing || !hasData}
           className={`
             inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors
-            ${totalImages > 0 && !isClearing
+            ${hasData && !isClearing
               ? 'bg-red-50 text-red-700 hover:bg-red-100'
               : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             }

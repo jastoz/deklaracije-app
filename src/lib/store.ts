@@ -48,8 +48,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   setTroskovnikItems: (items) => {
+    console.log(`[setTroskovnikItems] Postavljam ${items.length} items`);
     set({ troskovnikItems: items });
     const state = get();
+    console.log(`[setTroskovnikItems] State nakon set: ${state.troskovnikItems.length} items`);
     debouncedAutoSave(state.nazivUstanove, state.troskovnikItems);
   },
 
@@ -289,10 +291,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   clearStorage: async () => {
     try {
+      console.log('[store.clearStorage] Započinjem brisanje...');
+
+      // VAŽNO: Otkaži debounced auto-save prije brisanja
+      // Inače će stari podaci biti spremljeni nakon što ih obrišemo
+      console.log('[store.clearStorage] Otkaz auto-save...');
+      debouncedAutoSave.cancel();
+
+      console.log('[store.clearStorage] Pozivam clearAllStorage...');
       await clearAllStorage();
+
+      console.log('[store.clearStorage] Resetiram state na initialState...');
       set(initialState);
+
+      console.log('[store.clearStorage] ✅ Brisanje završeno uspješno');
     } catch (error) {
-      console.error('Failed to clear storage:', error);
+      console.error('[store.clearStorage] ❌ Failed to clear storage:', error);
       throw error;
     }
   },

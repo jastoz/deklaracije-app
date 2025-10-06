@@ -275,8 +275,20 @@ export async function addStampToImage(file: File): Promise<File> {
         // Nacrtaj originalnu sliku
         ctx.drawImage(img, 0, 0);
 
-        // Izračunaj dimenzije pečata (56% širine originalne slike - 200% povećanje)
-        const stampScale = 0.56;
+        // Adaptivno skaliranje pečata ovisno o veličini slike
+        // Za visokokvalitetne slike (>1500px) koristimo veći postotak
+        let stampScale: number;
+        if (img.width <= 1500) {
+          // Obične slike: 56%
+          stampScale = 0.56;
+        } else if (img.width <= 3000) {
+          // Srednje visoke rezolucije: 70%
+          stampScale = 0.70;
+        } else {
+          // Visokokvalitetne slike (>3000px): 80%
+          stampScale = 0.80;
+        }
+
         const stampWidth = img.width * stampScale;
         const stampHeight = (stampImg.height / stampImg.width) * stampWidth;
 

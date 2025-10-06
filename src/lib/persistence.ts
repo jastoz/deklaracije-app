@@ -28,6 +28,8 @@ export async function saveStateToStorage(
   troskovnikItems: TroskovnikItem[]
 ): Promise<void> {
   try {
+    console.log(`[saveStateToStorage] Spremam ${troskovnikItems.length} items u storage`);
+
     // Save metadata to localStorage
     const serializedState: SerializedState = {
       nazivUstanove,
@@ -46,8 +48,10 @@ export async function saveStateToStorage(
     };
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(serializedState));
+    console.log(`[saveStateToStorage] ✅ LocalStorage spremljen`);
 
     // Save images to IndexedDB
+    console.log(`[saveStateToStorage] Spremam slike u IndexedDB...`);
     for (const item of troskovnikItems) {
       for (const image of item.images) {
         await saveImageToIndexedDB(
@@ -114,10 +118,21 @@ export async function loadStateFromStorage(): Promise<{
 
 export async function clearAllStorage(): Promise<void> {
   try {
+    console.log('[clearAllStorage] Brisanje LocalStorage...');
     localStorage.removeItem(STORAGE_KEY);
+
+    console.log('[clearAllStorage] Brisanje IndexedDB...');
     await clearAllImagesFromIndexedDB();
+
+    console.log('[clearAllStorage] ✅ Svi podaci uspješno obrisani');
+
+    // Dodatna provjera da je storage stvarno prazan
+    const remainingInLocalStorage = localStorage.getItem(STORAGE_KEY);
+    if (remainingInLocalStorage) {
+      console.error('[clearAllStorage] ⚠️ LocalStorage nije prazan!', remainingInLocalStorage);
+    }
   } catch (error) {
-    console.error('Error clearing storage:', error);
+    console.error('[clearAllStorage] ❌ Error clearing storage:', error);
     throw new Error('Greška pri brisanju podataka');
   }
 }
@@ -138,15 +153,24 @@ export function getStoredTimestamp(): number | null {
   }
 }
 
-// Debounce helper for auto-save
+// Debounce helper for auto-save with cancel capability
 export function debounce<T extends (...args: never[]) => unknown>(
   func: T,
   wait: number
-): (...args: Parameters<T>) => void {
+): ((...args: Parameters<T>) => void) & { cancel: () => void } {
   let timeout: NodeJS.Timeout | null = null;
 
-  return (...args: Parameters<T>) => {
+  const debounced = (...args: Parameters<T>) => {
     if (timeout) clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
   };
+
+  debounced.cancel = () => {
+    if (timeout) {
+      clearTimeout(timeout);
+      timeout = null;
+    }
+  };
+
+  return debounced;
 }
