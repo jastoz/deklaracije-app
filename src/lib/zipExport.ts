@@ -66,14 +66,12 @@ export async function generateZIP(
     }
   }
 
-  // Generiraj manifest.csv i summary.txt samo ako includeStamp je true
-  if (includeStamp) {
-    const csvContent = generateManifestCSV(manifestEntries);
-    zip.file('manifest.csv', csvContent);
+  // Generiraj manifest.csv i summary.txt uvijek
+  const csvContent = generateManifestCSV(manifestEntries);
+  zip.file('manifest.csv', csvContent);
 
-    const summaryContent = generateSummary(nazivUstanove, items, manifestEntries);
-    zip.file('summary.txt', summaryContent);
-  }
+  const summaryContent = generateSummary(nazivUstanove, items, manifestEntries);
+  zip.file('summary.txt', summaryContent);
 
   // Generiraj ZIP
   return await zip.generateAsync({ type: 'blob' });

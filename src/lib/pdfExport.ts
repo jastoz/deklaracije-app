@@ -213,7 +213,8 @@ function processCanvasWithWatermark(
   if (includeWatermark) {
     // Add watermark text - gornji lijevi kut, decentno
     const watermarkText = `stavka ${rb}. troškovnika`;
-    const fontSize = Math.max(14, Math.min(width / 30, 24));
+    // Poboljšana formula za bolju čitljivost na svim veličinama
+    const fontSize = Math.max(16, Math.min(width / 25, 32));
     ctx.font = `${fontSize}px Arial, sans-serif`;
 
     const textMetrics = ctx.measureText(watermarkText);
@@ -266,21 +267,28 @@ function processCanvasWithWatermark(
 
     // Add stamp if available - donji desni kut
     if (stampImage) {
-      const stampAspectRatio = stampImage.width / stampImage.height;
-      const fixedStampWidth = 500;
-      let stampWidth = fixedStampWidth;
-      let stampHeight = fixedStampWidth / stampAspectRatio;
+      // Adaptivno skaliranje pečata ovisno o veličini slike
+      // Ista logika kao u fileUtils.ts za konzistentnost
+      let stampScale: number;
+      if (width <= 1500) {
+        // Obične slike: 56%
+        stampScale = 0.56;
+      } else if (width <= 3000) {
+        // Srednje visoke rezolucije: 70%
+        stampScale = 0.70;
+      } else {
+        // Visokokvalitetne slike (>3000px): 80%
+        stampScale = 0.80;
+      }
 
-      const maxWidth = width * 0.8;
+      let stampWidth = width * stampScale;
+      let stampHeight = (stampImage.height / stampImage.width) * stampWidth;
+
+      // Safety check - ograniči na max 95% visine slike
       const maxHeight = height * 0.95;
-
-      if (stampWidth > maxWidth || stampHeight > maxHeight) {
-        const scaleByWidth = maxWidth / stampWidth;
-        const scaleByHeight = maxHeight / stampHeight;
-        const scale = Math.min(scaleByWidth, scaleByHeight);
-
-        stampWidth = fixedStampWidth * scale;
-        stampHeight = stampWidth / stampAspectRatio;
+      if (stampHeight > maxHeight) {
+        stampHeight = maxHeight;
+        stampWidth = (stampImage.width / stampImage.height) * stampHeight;
       }
 
       const padding = width * 0.02;

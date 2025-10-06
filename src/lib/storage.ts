@@ -6,6 +6,7 @@ interface DeklaracijeDB extends DBSchema {
     value: {
       id: string;
       blob: Blob;
+      mimeType: string;
       originalFilename: string;
       finalFilename: string;
       rb: number;
@@ -19,7 +20,7 @@ interface DeklaracijeDB extends DBSchema {
 }
 
 const DB_NAME = 'deklaracije-db';
-const DB_VERSION = 3; // Increment version to clear old watermarked images
+const DB_VERSION = 4; // Increment version to add mimeType field and clear old data
 
 let dbInstance: IDBPDatabase<DeklaracijeDB> | null = null;
 
@@ -29,7 +30,12 @@ async function getDB(): Promise<IDBPDatabase<DeklaracijeDB>> {
   }
 
   dbInstance = await openDB<DeklaracijeDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    upgrade(db, oldVersion, newVersion, transaction) {
+      // If upgrading to version 4, delete old images store to clear corrupt data
+      if (oldVersion < 4 && db.objectStoreNames.contains('images')) {
+        db.deleteObjectStore('images');
+      }
+
       // Create images store
       if (!db.objectStoreNames.contains('images')) {
         const imageStore = db.createObjectStore('images', { keyPath: 'id' });
@@ -54,6 +60,7 @@ export async function saveImageToIndexedDB(
   await db.put('images', {
     id: imageId,
     blob: file,
+    mimeType: file.type || 'image/jpeg', // Fallback to image/jpeg if type is missing
     originalFilename,
     finalFilename,
     rb,
@@ -67,8 +74,8 @@ export async function getImageFromIndexedDB(imageId: string): Promise<File | nul
 
   if (!record) return null;
 
-  // Convert Blob back to File
-  return new File([record.blob], record.originalFilename, { type: record.blob.type });
+  // Convert Blob back to File with preserved mimeType
+  return new File([record.blob], record.originalFilename, { type: record.mimeType });
 }
 
 export async function getAllImagesFromIndexedDB(): Promise<Map<string, { file: File }>> {
@@ -78,7 +85,7 @@ export async function getAllImagesFromIndexedDB(): Promise<Map<string, { file: F
   const imageMap = new Map<string, { file: File }>();
 
   for (const record of allRecords) {
-    const file = new File([record.blob], record.originalFilename, { type: record.blob.type });
+    const file = new File([record.blob], record.originalFilename, { type: record.mimeType });
     imageMap.set(record.id, { file });
   }
 
